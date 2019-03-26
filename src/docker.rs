@@ -5,11 +5,11 @@ use std::{env, fs};
 
 use semver::{Version, VersionReq};
 
-use {Target, Toml};
 use cargo::Root;
 use errors::*;
 use extensions::CommandExt;
 use id;
+use {Target, Toml};
 
 const DOCKER_IMAGES: &[&str] = &include!(concat!(env!("OUT_DIR"), "/docker-images.rs"));
 
@@ -54,30 +54,32 @@ pub fn register(target: &Target, verbose: bool) -> Result<()> {
     let cmd = if target.is_windows() {
         // https://www.kernel.org/doc/html/latest/admin-guide/binfmt-misc.html
         "mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc && \
-            echo ':wine:M::MZ::/usr/bin/run-detectors:' > /proc/sys/fs/binfmt_misc/register"
+         echo ':wine:M::MZ::/usr/bin/run-detectors:' > /proc/sys/fs/binfmt_misc/register"
     } else {
         "apt-get update && apt-get install --no-install-recommends -y \
-            binfmt-support qemu-user-static"
+         binfmt-support qemu-user-static"
     };
     docker_command("run")
         .arg("--privileged")
         .arg("--rm")
-        .arg("-it")
+        .arg("-i")
         .arg("ubuntu:16.04")
         .args(&["sh", "-c", cmd])
         .run(verbose)
 }
 
-pub fn run(target: &Target,
-           args: &[String],
-           root: &Root,
-           toml: Option<&Toml>,
-           uses_xargo: bool,
-           sysroot: &PathBuf,
-           verbose: bool)
-           -> Result<ExitStatus> {
+pub fn run(
+    target: &Target,
+    args: &[String],
+    root: &Root,
+    toml: Option<&Toml>,
+    uses_xargo: bool,
+    sysroot: &PathBuf,
+    verbose: bool,
+) -> Result<ExitStatus> {
     let root = root.path();
-    let home_dir = env::home_dir().ok_or_else(|| "couldn't get home directory. Is $HOME not set?")?;
+    let home_dir =
+        env::home_dir().ok_or_else(|| "couldn't get home directory. Is $HOME not set?")?;
     let cargo_dir = env::var_os("CARGO_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home_dir.join(".cargo"));
@@ -102,9 +104,12 @@ pub fn run(target: &Target,
     // We create/regenerate the lockfile on the host system because the Docker
     // container doesn't have write access to the root of the Cargo project
     let cargo_toml = root.join("Cargo.toml");
-    Command::new("cargo").args(&["fetch",
-                "--manifest-path",
-                &cargo_toml.display().to_string()])
+    Command::new("cargo")
+        .args(&[
+            "fetch",
+            "--manifest-path",
+            &cargo_toml.display().to_string(),
+        ])
         .run(verbose)
         .chain_err(|| "couldn't generate Cargo.lock")?;
 
@@ -140,7 +145,9 @@ pub fn run(target: &Target,
             }
 
             if var == "CROSS_RUNNER" {
-                bail!("CROSS_RUNNER environment variable name is reserved and cannot be pass through");
+                bail!(
+                    "CROSS_RUNNER environment variable name is reserved and cannot be pass through"
+                );
             }
 
             // Only specifying the environment variable name in the "-e"
@@ -152,14 +159,17 @@ pub fn run(target: &Target,
     }
 
     docker
-        .args(&["-e", &format!("CROSS_RUNNER={}", runner.unwrap_or_else(|| String::new()))])
+        .args(&[
+            "-e",
+            &format!("CROSS_RUNNER={}", runner.unwrap_or_else(|| String::new())),
+        ])
         .args(&["-v", &format!("{}:/xargo", xargo_dir.display())])
         .args(&["-v", &format!("{}:/cargo", cargo_dir.display())])
         .args(&["-v", &format!("{}:/project:ro", root.display())])
         .args(&["-v", &format!("{}:/rust:ro", sysroot.display())])
         .args(&["-v", &format!("{}:/target", target_dir.display())])
         .args(&["-w", "/project"])
-        .args(&["-it", &image(toml, target)?])
+        .args(&["-i", &image(toml, target)?])
         .args(&["sh", "-c", &format!("PATH=$PATH:/rust/bin {:?}", cmd)])
         .run_and_get_status(verbose)
 }
@@ -167,7 +177,7 @@ pub fn run(target: &Target,
 fn image(toml: Option<&Toml>, target: &Target) -> Result<String> {
     if let Some(toml) = toml {
         if let Some(image) = toml.image(target)?.map(|s| s.to_owned()) {
-            return Ok(image)
+            return Ok(image);
         }
     }
 
@@ -179,8 +189,11 @@ fn image(toml: Option<&Toml>, target: &Target) -> Result<String> {
     };
     let triple = target.triple();
     if !DOCKER_IMAGES.contains(&triple) {
-        bail!("cross does not provide docker image for {} target, \
-               specify a custom image in Cross.toml", triple);
+        bail!(
+            "cross does not provide docker image for {} target, \
+             specify a custom image in Cross.toml",
+            triple
+        );
     }
     Ok(format!("japaric/{}:{}", target.triple(), tag))
 }
